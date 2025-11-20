@@ -77,3 +77,4 @@ yarn-error.log*
 # Production builds
 web-ui/dist/
 web-ui/build/
+.env.backup
