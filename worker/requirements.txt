@@ -1,0 +1,6 @@
+# Worker dependencies
+celery[redis]==5.3.4
+redis==5.0.1
+
+# Include all API dependencies
+-r ../requirements.txt

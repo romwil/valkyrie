@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Production overrides for API
+  api:
+    restart: always
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      LOG_LEVEL: warning
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Production overrides for Worker
+  worker:
+    restart: always
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      LOG_LEVEL: warning
+    command: ["celery", "-A", "worker.tasks", "worker", "--loglevel=warning", "--concurrency=4"]
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # Production overrides for Web
+  web:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Production overrides for PostgreSQL
+  postgres:
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-valkyrie}
+      POSTGRES_USER: ${POSTGRES_USER:-valkyrie}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # Production overrides for Redis
+  redis:
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Add backup service for production
+  backup:
+    image: postgres:15-alpine
+    container_name: valkyrie-backup
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    command: >
+      sh -c "while true; do
+        pg_dump -h postgres -U ${POSTGRES_USER:-valkyrie} ${POSTGRES_DB:-valkyrie} > /backups/backup_$$(date +%Y%m%d_%H%M%S).sql;
+        find /backups -name 'backup_*.sql' -mtime +7 -delete;
+        sleep 86400;
+      done"
+    networks:
+      - valkyrie-network
+    depends_on:
+      - postgres

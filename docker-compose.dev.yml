@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Override API service for development
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      target: builder  # Use builder stage for development
+    volumes:
+      - ./src:/app/src:ro
+      - ./valkyrie_config.yaml:/app/valkyrie_config.yaml:ro
+      - ./data:/app/data
+      - ./logs/api:/app/logs
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      RELOAD: "true"
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Override Worker service for development
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+      target: builder  # Use builder stage for development
+    volumes:
+      - ./src:/app/src:ro
+      - ./worker:/app/worker:ro
+      - ./valkyrie_config.yaml:/app/valkyrie_config.yaml:ro
+      - ./data:/app/data
+      - ./logs/worker:/app/logs
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+    command: ["celery", "-A", "worker.tasks", "worker", "--loglevel=debug", "--concurrency=1"]
+
+  # Override Web UI for development
+  web:
+    image: node:18-alpine
+    container_name: valkyrie-web-dev
+    working_dir: /app
+    volumes:
+      - ./web-ui:/app
+      - /app/node_modules  # Exclude node_modules from bind mount
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "${WEB_DEV_PORT:-3000}:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - valkyrie-network
+
+  # Add development tools
+  adminer:
+    image: adminer:latest
+    container_name: valkyrie-adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    networks:
+      - valkyrie-network
+    depends_on:
+      - postgres
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: valkyrie-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    networks:
+      - valkyrie-network
+    depends_on:
+      - redis
