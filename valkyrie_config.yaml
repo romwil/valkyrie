@@ -1,0 +1,17 @@
+# valkyrie_config.yaml - Runtime Configuration for Project VALKYRIE
+GENERAL:
+  INPUT_DIR: /app/data/input/       # Location for uploaded files
+  OUTPUT_DIR: /app/data/output/     # Location for processed output files
+  STATUS_DIR: /app/data/status/     # Location for job status JSON files
+
+LLM_AGENT:
+  # The API Key must be securely loaded from the environment or a Secret Manager
+  API_KEY: ${GEMINI_API_KEY}        # Mandatory for API calls
+  MODEL_NAME: gemini-2.5-flash      # Fast, cost-effective model for high-volume text analysis
+  MAX_TITLE_BATCH_SIZE: 100         # Number of title pairs to send per concurrent LLM batch call
+  MAX_CONCURRENT_LLM_CALLS: 5       # Max number of simultaneous threads hitting the LLM API
+  LLM_TIMEOUT_SECONDS: 10
+
+DATA_LOGIC:
+  ENCODING_FIX_CHARS: 'latin1'      # Source encoding for Mojibake fix
+  TARGET_ENCODING: 'utf8'           # Target encoding after fix
