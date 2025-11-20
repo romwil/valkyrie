@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: valkyrie-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-valkyrie}
+      POSTGRES_USER: ${POSTGRES_USER:-valkyrie}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-valkyrie_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - valkyrie-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-valkyrie}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: valkyrie-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - valkyrie-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: valkyrie-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-valkyrie}:${POSTGRES_PASSWORD:-valkyrie_secret}@postgres:5432/${POSTGRES_DB:-valkyrie}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-here}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    volumes:
+      - ./data:/app/data
+      - ./logs/api:/app/logs
+    ports:
+      - "${API_PORT:-8000}:8000"
+    networks:
+      - valkyrie-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: valkyrie-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-valkyrie}:${POSTGRES_PASSWORD:-valkyrie_secret}@postgres:5432/${POSTGRES_DB:-valkyrie}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./logs/worker:/app/logs
+    networks:
+      - valkyrie-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  # Web UI with nginx
+  web:
+    build:
+      context: .
+      dockerfile: web-ui/Dockerfile
+    container_name: valkyrie-web
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "${WEB_PORT:-80}:80"
+    networks:
+      - valkyrie-network
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  valkyrie-network:
+    driver: bridge
+    name: valkyrie-network
+
+volumes:
+  postgres_data:
+    name: valkyrie-postgres-data
+  redis_data:
+    name: valkyrie-redis-data
